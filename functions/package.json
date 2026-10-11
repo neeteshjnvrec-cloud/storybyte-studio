@@ -1,0 +1,14 @@
+{
+  "name": "storybyte-studio-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0",
+    "googleapis": "^180.0.0"
+  }
+}

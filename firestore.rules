@@ -1,0 +1,56 @@
+rules_version = '2';
+// Users manage their own profiles; everything else (connections, jobs,
+// series state) is written only by the server and is read-only to its
+// owner. tokens/ and system/ have no client access at all — no rule
+// matches them, so every client read and write there is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function shortString(value, max) {
+      return value is string && value.size() <= max;
+    }
+
+    function validProfile(p) {
+      return p.keys().hasOnly(['name', 'niche', 'customNiche', 'language', 'style', 'voice', 'timezone', 'active',
+                               'shorts', 'long', 'targets', 'hashtags', 'footer', 'createdAt', 'updatedAt'])
+        && shortString(p.name, 60) && p.name.size() > 0
+        && p.niche in ['devotional', 'kids', 'motivation', 'mystery', 'horror', 'romance', 'history', 'sleep', 'custom']
+        && shortString(p.get('customNiche', ''), 300)
+        && p.language in ['hi', 'en']
+        && p.style in ['cartoon3d', 'cartoon2d', 'realistic', 'illustration']
+        && p.voice in ['female', 'male', 'premium']
+        && shortString(p.timezone, 60)
+        && p.active is bool
+        && p.shorts is map && p.shorts.keys().hasOnly(['enabled', 'times'])
+        && p.shorts.times is list && p.shorts.times.size() <= 3
+        && p.long is map && p.long.keys().hasOnly(['enabled', 'days', 'time', 'seriesTitle', 'genre'])
+        && p.long.days is list && p.long.days.size() <= 7
+        && shortString(p.long.get('seriesTitle', ''), 80) && shortString(p.long.get('genre', ''), 120)
+        && p.targets is map && p.targets.keys().hasOnly(['youtube', 'facebook', 'instagram'])
+        && p.get('hashtags', []) is list && p.get('hashtags', []).size() <= 15
+        && shortString(p.get('footer', ''), 300);
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && request.resource.data.keys().hasOnly(['email', 'lastSeenAt']);
+
+      match /profiles/{profileId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && validProfile(request.resource.data);
+      }
+      match /connections/{connectionId} {
+        allow read: if isOwner(uid);
+      }
+      match /jobs/{jobId} {
+        allow read: if isOwner(uid);
+      }
+      match /series/{profileId} {
+        allow read: if isOwner(uid);
+      }
+    }
+  }
+}

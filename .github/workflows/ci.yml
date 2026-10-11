@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Worker tests
+        working-directory: worker
+        run: npm ci --ignore-scripts && npm test
+      - name: Functions tests
+        working-directory: functions
+        run: npm ci --ignore-scripts && npm test
+      - name: Dashboard parses
+        run: node --check --input-type=module < web/app.js

@@ -1,0 +1,19 @@
+{
+  "name": "storybyte-studio-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Renders and publishes each profile's scheduled Shorts and long episodes.",
+  "type": "commonjs",
+  "main": "src/run.js",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/run.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "googleapis": "^180.0.0",
+    "groq-sdk": "^0.9.0",
+    "sharp": "^0.33.5"
+  }
+}
