@@ -24,10 +24,7 @@ stub('publish/youtube.js', {
   },
 });
 stub('publish/facebook.js', { publishToFacebook: async (conn, post) => { calls.push(['facebook', post.description]); return { posted: true, id: 'F', url: 'f' }; } });
-stub('publish/instagram.js', { publishToInstagram: async (conn, post) => { calls.push(['instagram', post.videoUrl]); return { posted: true, id: 'I', url: 'i' }; } });
-stub('publish/storage.js', {
-  shareTemporarily: async () => ({ url: 'https://signed', remove: async () => calls.push(['removed']) }),
-});
+stub('publish/instagram.js', { publishToInstagram: async (conn, post) => { calls.push(['instagram', post.videoPath]); return { posted: true, id: 'I', url: 'i' }; } });
 
 const { publishAll } = require('../src/jobs/publish');
 const post = { title: 't', description: 'd', caption: 'caption', isShort: true, comment: 'c' };
@@ -37,7 +34,7 @@ test('publishes to every targeted account, each with its own post', async () => 
   const profile = { niche: 'kids', targets: { youtube: 'yt1', facebook: 'fb1', instagram: 'ig1' } };
   const results = await publishAll({ uid: 'u', profile, jobId: 'j', videoPath: '/v.mp4', post, platforms: ['youtube', 'facebook', 'instagram'] });
   assert.deepStrictEqual(Object.keys(results), ['youtube', 'facebook', 'instagram']);
-  assert.deepStrictEqual(calls, [['youtube', true, true], ['facebook', 'caption'], ['instagram', 'https://signed'], ['removed']]);
+  assert.deepStrictEqual(calls, [['youtube', true, true], ['facebook', 'caption'], ['instagram', '/v.mp4']]);
 });
 
 test('skips platforms without a target', async () => {

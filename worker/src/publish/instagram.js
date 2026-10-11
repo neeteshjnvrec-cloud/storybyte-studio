@@ -1,10 +1,13 @@
 /**
  * Publishes a Reel to a user's connected Instagram professional account.
- * Instagram fetches the video itself, so it needs a public URL — the worker
- * hands it a short-lived signed Cloud Storage URL (see storage.js). The URL
- * path must be plain ASCII: Instagram can't fetch from a path with
- * Devanagari in it (a real failure on the original pipeline).
+ *
+ * The video is uploaded straight to Meta (a "resumable" upload to
+ * rupload.facebook.com, available to apps using Facebook Login for
+ * Business), so it never has to sit at a public URL — nothing is hosted or
+ * stored on our side.
  */
+const fs = require('fs');
+
 const VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const GRAPH = `https://graph.facebook.com/${VERSION}`;
 
@@ -18,12 +21,26 @@ async function call(method, pathname, params, token) {
   return json;
 }
 
-async function publishToInstagram(conn, { videoUrl, caption, comment, timeoutMs = 10 * 60 * 1000 }) {
+async function upload(containerId, videoPath, token) {
+  const size = fs.statSync(videoPath).size;
+  const res = await fetch(`https://rupload.facebook.com/ig-api-upload/${VERSION}/${containerId}`, {
+    method: 'POST',
+    headers: { Authorization: `OAuth ${token}`, offset: '0', file_size: String(size), 'Content-Type': 'application/octet-stream' },
+    body: fs.readFileSync(videoPath),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.success === false || json.error) {
+    throw new Error(`Instagram upload failed: ${json.error?.message || json.debug_info?.message || `HTTP ${res.status}`}`);
+  }
+}
+
+async function publishToInstagram(conn, { videoPath, caption, comment, timeoutMs = 10 * 60 * 1000 }) {
   const igId = conn.externalId;
   const token = conn.credentials.pageToken;
   const container = await call('POST', `/${igId}/media`, {
-    media_type: 'REELS', video_url: videoUrl, caption: String(caption || '').slice(0, 2200), share_to_feed: 'true',
+    media_type: 'REELS', upload_type: 'resumable', caption: String(caption || '').slice(0, 2200), share_to_feed: 'true',
   }, token);
+  await upload(container.id, videoPath, token);
 
   const started = Date.now();
   for (;;) {

@@ -1,11 +1,11 @@
-# Deploys the dashboard (Hosting), the /api functions, and the Firestore and
-# Storage rules and indexes. Setup: docs/SETUP.md, step 6.
+# Deploys the dashboard (Firebase Hosting) and the Firestore rules and
+# indexes — all on Firebase's free Spark plan. Setup: docs/SETUP.md.
 name: Deploy Firebase
 
 on:
   push:
     branches: [main]
-    paths: ['web/**', 'functions/**', 'firestore.*', 'storage.rules', 'firebase.json', '.github/workflows/deploy-firebase.yml']
+    paths: ['web/**', 'firestore.*', 'firebase.json', '.github/workflows/deploy-firebase.yml']
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ concurrency: deploy-firebase
 
 jobs:
   deploy:
-    # Skipped until the project is configured (docs/SETUP.md, step 6).
+    # Skipped until the project is configured.
     if: vars.FIREBASE_PROJECT_ID != ''
     runs-on: ubuntu-latest
     env:
@@ -26,32 +26,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check configuration and write the web config and function parameters
+      - name: Write the dashboard's config
         env:
           FIREBASE_WEB_CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          META_APP_ID: ${{ vars.META_APP_ID }}
-          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          API_URL: ${{ vars.API_URL }}
         shell: bash
         run: |
           missing=""
-          for v in PROJECT FIREBASE_WEB_CONFIG GOOGLE_CLIENT_ID META_APP_ID PUBLIC_URL; do
-            [ -n "${!v}" ] || missing="$missing $v"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::Set these repository variables first (docs/SETUP.md):${missing/PROJECT/FIREBASE_PROJECT_ID}"
-            exit 1
-          fi
-          echo "export const firebaseConfig = ${FIREBASE_WEB_CONFIG};" > web/config.js
-          printf 'GOOGLE_CLIENT_ID=%s\nMETA_APP_ID=%s\nPUBLIC_URL=%s\n' "$GOOGLE_CLIENT_ID" "$META_APP_ID" "$PUBLIC_URL" > functions/.env
-
-      - name: Install function dependencies
-        working-directory: functions
-        run: npm ci
-
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_DEPLOY_KEY }}
+          for v in FIREBASE_WEB_CONFIG API_URL; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then echo "::error::Set these repository variables first (docs/SETUP.md):$missing"; exit 1; fi
+          printf 'export const firebaseConfig = %s;\n\nexport const apiUrl = %s;\n' "$FIREBASE_WEB_CONFIG" "$(node -p 'JSON.stringify(process.env.API_URL)')" > web/config.js
 
       - name: Deploy
-        run: npx --yes firebase-tools@13 deploy --only hosting,functions,firestore,storage --project "$PROJECT" --non-interactive --force
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx --yes firebase-tools@15 deploy --only hosting,firestore --project "$PROJECT" --non-interactive
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"

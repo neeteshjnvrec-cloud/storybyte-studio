@@ -4,16 +4,11 @@ const crypto = require('crypto');
 
 process.env.TOKEN_KEY = crypto.randomBytes(32).toString('base64');
 const { encrypt, decrypt } = require('../src/crypto');
-const fnCrypto = require('../../functions/lib/crypto');
 
 test('round-trips and never stores the plaintext', () => {
   const enc = encrypt({ refreshToken: 'secret-refresh-token' });
   assert.ok(!enc.includes('secret-refresh-token'));
   assert.deepStrictEqual(decrypt(enc), { refreshToken: 'secret-refresh-token' });
-});
-
-test('what the functions write, the worker reads', () => {
-  assert.deepStrictEqual(decrypt(fnCrypto.encrypt({ pageToken: 'p' })), { pageToken: 'p' });
 });
 
 test('tampering is detected', () => {

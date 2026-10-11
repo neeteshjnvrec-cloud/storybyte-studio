@@ -5,15 +5,15 @@
  * and the Instagram professional account linked to it, if any. Instagram
  * publishing goes through that Page token too.
  */
-const VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
+export const VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${VERSION}`;
 
-const SCOPES = [
+export const SCOPES = [
   'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement',
   'instagram_basic', 'instagram_content_publish', 'instagram_manage_comments', 'business_management',
 ];
 
-function authUrl({ appId, redirectUri, state }) {
+export function authUrl({ appId, redirectUri, state }) {
   const q = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, scope: SCOPES.join(','), response_type: 'code' });
   return `https://www.facebook.com/${VERSION}/dialog/oauth?${q}`;
 }
@@ -26,7 +26,7 @@ async function graph(pathname, params) {
 }
 
 /** The Pages (and linked Instagram accounts) the user granted, with tokens. */
-async function pagesFor({ appId, appSecret, redirectUri, code }) {
+export async function pagesFor({ appId, appSecret, redirectUri, code }) {
   const short = await graph('/oauth/access_token', { client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code });
   const long = await graph('/oauth/access_token', {
     grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: short.access_token,
@@ -44,4 +44,4 @@ async function pagesFor({ appId, appSecret, redirectUri, code }) {
   }));
 }
 
-module.exports = { authUrl, pagesFor, SCOPES };
+

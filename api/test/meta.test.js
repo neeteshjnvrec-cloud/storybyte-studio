@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const meta = require('../lib/meta');
+import test from 'node:test';
+import assert from 'node:assert';
+import * as meta from '../src/meta.js';
 
 test('Pages come back with their tokens and linked Instagram accounts, across pages of results', async () => {
   const seen = [];

@@ -8,7 +8,6 @@ const { getConnection, markExpired, isRevoked } = require('../tokens');
 const { publishToYouTube } = require('../publish/youtube');
 const { publishToFacebook } = require('../publish/facebook');
 const { publishToInstagram } = require('../publish/instagram');
-const { shareTemporarily } = require('../publish/storage');
 
 async function publishAll({ uid, profile, jobId, videoPath, thumbnailPath, post, platforms }) {
   const results = {};
@@ -24,12 +23,7 @@ async function publishAll({ uid, profile, jobId, videoPath, thumbnailPath, post,
       } else if (platform === 'facebook') {
         results.facebook = await publishToFacebook(conn, { ...post, videoPath, thumbnailPath, description: post.caption });
       } else if (platform === 'instagram') {
-        const shared = await shareTemporarily(videoPath, { uid, jobId });
-        try {
-          results.instagram = await publishToInstagram(conn, { videoUrl: shared.url, caption: post.caption, comment: post.comment });
-        } finally {
-          await shared.remove().catch(() => {});
-        }
+        results.instagram = await publishToInstagram(conn, { videoPath, caption: post.caption, comment: post.comment });
       }
       console.log(`  ✅ ${platform}: ${results[platform].url || results[platform].id}`);
     } catch (e) {

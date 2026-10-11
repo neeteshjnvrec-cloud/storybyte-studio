@@ -1,8 +1,8 @@
 /**
  * Encryption for connected accounts' OAuth tokens at rest (AES-256-GCM).
- * The same format is written by functions/lib/crypto.js when an account is
- * connected and read here when the worker publishes. TOKEN_KEY is a
- * base64-encoded 32-byte key held only by the functions and the worker —
+ * The same format is written by api/src/crypto.js when an account is
+ * connected and read here when the worker publishes (api/test checks that).
+ * TOKEN_KEY is a base64-encoded 32-byte key held only by the API and the worker —
  * never by the browser, and never stored in Firestore.
  *
  * Format: "v1:<iv b64>:<auth tag b64>:<ciphertext b64>" of a JSON object.

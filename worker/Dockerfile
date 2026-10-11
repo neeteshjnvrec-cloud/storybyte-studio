@@ -1,5 +1,6 @@
 # The video worker: Node 22 + ffmpeg + Devanagari/Latin fonts + edge-tts.
-# Built and deployed as a Cloud Run Job (see docs/SETUP.md).
+# Optional: for running the worker outside GitHub Actions (see README, "Before
+# opening it to the public"), e.g. as a Cloud Run Job or on your own machine.
 FROM node:22-bookworm-slim
 
 RUN apt-get update \

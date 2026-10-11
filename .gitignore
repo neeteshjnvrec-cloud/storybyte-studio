@@ -6,3 +6,5 @@ functions/.env*
 firebase-debug.log*
 *.mp4
 service-account*.json
+.dev.vars
+.wrangler/

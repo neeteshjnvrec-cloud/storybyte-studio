@@ -19,8 +19,8 @@ jobs:
       - name: Worker tests
         working-directory: worker
         run: npm ci --ignore-scripts && npm test
-      - name: Functions tests
-        working-directory: functions
+      - name: API tests
+        working-directory: api
         run: npm ci --ignore-scripts && npm test
       - name: Dashboard parses
         run: node --check --input-type=module < web/app.js

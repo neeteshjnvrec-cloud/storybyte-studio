@@ -1,5 +1,5 @@
 /**
- * The worker's entry point, run hourly by Cloud Scheduler -> Cloud Run Job
+ * The worker's entry point, run hourly by GitHub Actions (.github/workflows/worker.yml)
  * (or by hand for testing):
  *
  *   node src/run.js              enqueue what's due, then process the queue
@@ -93,7 +93,9 @@ async function processJob(ref) {
   } catch (e) {
     console.error(`  ✗ ${e.stack || e}`);
     // Back to the queue for one more attempt (claim() gives up after MAX_ATTEMPTS).
-    await ref.update({ status: 'queued', error: String(e.message || e).slice(0, 1000), leaseUntil: FieldValue.delete() });
+    // (The job is gone if its owner deleted their account meanwhile.)
+    await ref.update({ status: 'queued', error: String(e.message || e).slice(0, 1000), leaseUntil: FieldValue.delete() })
+      .catch((err) => console.warn(`  could not requeue ${ref.path}: ${err.message}`));
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }

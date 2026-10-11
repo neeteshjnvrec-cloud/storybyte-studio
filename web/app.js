@@ -1,9 +1,9 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, deleteUser, reauthenticateWithPopup } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore, collection, doc, onSnapshot, query, orderBy, limit, addDoc, setDoc, deleteDoc, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { firebaseConfig } from './config.js';
+import { firebaseConfig, apiUrl } from './config.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -41,7 +41,7 @@ function flash(message, kind = 'ok') {
 }
 
 async function api(path, body = {}) {
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${apiUrl.replace(/\/$/, '')}/${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
     body: JSON.stringify(body),
@@ -61,6 +61,7 @@ onAuthStateChanged(auth, (u) => {
   $('#signed-out').hidden = !!u;
   $('#signed-in').hidden = !u;
   $('#who').replaceChildren(...(u ? [el('span', {}, u.email), el('button', { class: 'ghost', onclick: () => signOut(auth) }, 'Sign out')] : []));
+  $('#delete-account').hidden = !u;
   if (!u) return;
   const base = `users/${u.uid}`;
   setDoc(doc(db, base), { email: u.email, lastSeenAt: serverTimestamp() }, { merge: true }).catch(() => {});
@@ -277,3 +278,21 @@ function renderJobs(jobs) {
       el('span', { class: 'links' }, links));
   }));
 }
+
+// ---- Delete account ----
+$('#delete-account').addEventListener('click', async () => {
+  if (!confirm('Delete your StoryByte Studio account? Your profiles, connected accounts and history are erased. Videos already published stay on your channels.')) return;
+  try {
+    await api('account/delete');
+    try {
+      await deleteUser(user);
+    } catch (e) {
+      if (e.code !== 'auth/requires-recent-login') throw e;
+      await reauthenticateWithPopup(user, new GoogleAuthProvider());
+      await deleteUser(auth.currentUser);
+    }
+    flash('Your account was deleted.');
+  } catch (e) {
+    flash(e.message, 'error');
+  }
+});

@@ -1,155 +1,141 @@
-# Setting up StoryByte Studio
+# Setting up StoryByte Studio (free plans only)
 
-About an hour of clicking for the first deploy, plus Google's and Meta's
-reviews (days to weeks) before people outside your test list can connect
-accounts. Everything below is free to start except the Firebase **Blaze**
-(pay-as-you-go) plan, which Cloud Functions and Cloud Run need. It has a free
-monthly allowance; see "What it costs" at the end.
+Everything here runs without a paid plan or a credit card:
 
-Throughout: `PROJECT` = your Firebase project id, `REGION` = `us-central1`
-(or set the `GCP_REGION` variable), `PUBLIC_URL` = `https://PROJECT.web.app`
-(or your custom domain).
+| Part | Runs on |
+| --- | --- |
+| Sign-in, database, dashboard website | Firebase **Spark** (free) plan |
+| API: connecting accounts, "Run now", account deletion | Cloudflare Workers (free) |
+| Making and publishing the videos, every hour | GitHub Actions, like the StoryByte app's daily posts |
 
-## 1. Firebase project
+Plan on about an hour. Google's and Meta's reviews come later and are only
+needed before people outside your test list can connect accounts.
 
-1. [console.firebase.google.com](https://console.firebase.google.com) → **Add project**. Upgrade it to **Blaze**.
-2. **Authentication → Sign-in method → Google → Enable.** Under **Settings → Authorized domains**, add your custom domain if you use one.
-3. **Firestore Database → Create database** (production mode, any location).
-4. **Storage → Get started.** Note the bucket name (e.g. `PROJECT.firebasestorage.app`).
-5. **Project settings → Your apps → Web app (</>)**, register it and copy the `firebaseConfig` object. You'll paste it as the `FIREBASE_WEB_CONFIG` variable (step 6) as JSON:
+You'll collect these values on the way, then paste them into GitHub in step 7:
+
+| Value | From step |
+| --- | --- |
+| Firebase project id, web config | 1 |
+| `FIREBASE_SERVICE_ACCOUNT` (secret) | 2 |
+| `API_URL`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DEPLOY_TOKEN`, `CLOUDFLARE_API_TOKEN` | 3 |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | 4 |
+| `META_APP_ID`, `META_APP_SECRET` | 5 |
+| `TOKEN_KEY`, `STATE_SECRET`, `GROQ_API_KEY`, `SARVAM_API_KEY` | 6 |
+
+## 1. Firebase project (Spark plan)
+
+1. [console.firebase.google.com](https://console.firebase.google.com) → **Create a project**, e.g. `storybyte-studio`. Google Analytics: off. Never click **Upgrade** — everything here works on Spark.
+2. **Build → Authentication → Get started → Sign-in method → Google → Enable**, choose your support email → **Save**.
+3. **Build → Firestore Database → Create database** → **Standard** edition → location **asia-south1 (Mumbai)** (can't be changed later) → **production mode** → **Create**.
+4. Skip **Storage** — it isn't used (and now needs the paid plan).
+5. ⚙️ **Project settings → General → Your apps → Web (`</>`)**, nickname `studio-web`, tick **Also set up Firebase Hosting** → **Register app**. Copy the `firebaseConfig` values and write them as JSON on one line — this is the `FIREBASE_WEB_CONFIG` variable:
    `{"apiKey":"…","authDomain":"PROJECT.firebaseapp.com","projectId":"PROJECT","storageBucket":"…","appId":"…"}`
+6. Note the **Project ID**. Your dashboard will be at `https://PROJECT.web.app` (the `PUBLIC_URL` variable).
 
-## 2. Google Cloud: APIs, image registry, service accounts
+## 2. Service account key
 
-In [Cloud Shell](https://shell.cloud.google.com) (same project):
+The worker and the API use it to read and write the database; the deploy
+workflow uses it to publish the dashboard.
 
-```sh
-PROJECT=your-project-id; REGION=us-central1
-gcloud config set project $PROJECT
-gcloud services enable youtube.googleapis.com run.googleapis.com cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com \
-  iamcredentials.googleapis.com cloudfunctions.googleapis.com
-gcloud artifacts repositories create studio --repository-format=docker --location=$REGION
+1. ⚙️ **Project settings → Service accounts → Generate new private key** → **Generate key**. A `.json` file downloads. **This is a password: never share it, paste it in chat, or commit it.** You'll paste its whole contents into the GitHub secret `FIREBASE_SERVICE_ACCOUNT` (step 7), then delete the file.
+2. Let it deploy: [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam) (pick your project at the top) → find `firebase-adminsdk-…@PROJECT.iam.gserviceaccount.com` → ✏️ **Edit** → **Add another role**: **Firebase Admin**, and **Service Usage Consumer** → **Save**. (No billing needed.)
 
-# The worker: reads/writes Firestore, stages Reels in Storage and signs
-# their temporary URLs, reads its secrets.
-gcloud iam service-accounts create storybyte-worker
-W=storybyte-worker@$PROJECT.iam.gserviceaccount.com
-for role in roles/datastore.user roles/storage.objectAdmin roles/secretmanager.secretAccessor; do
-  gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$W --role $role
-done
-gcloud iam service-accounts add-iam-policy-binding $W --member serviceAccount:$W --role roles/iam.serviceAccountTokenCreator
+## 3. Cloudflare (API + scene pictures)
 
-# Cloud Scheduler's identity for starting the worker.
-gcloud iam service-accounts create storybyte-scheduler
-gcloud projects add-iam-policy-binding $PROJECT \
-  --member serviceAccount:storybyte-scheduler@$PROJECT.iam.gserviceaccount.com --role roles/run.invoker
+Use the Cloudflare account you already use for StoryByte's pictures, or a new free one.
 
-# GitHub Actions' deploy identity.
-gcloud iam service-accounts create github-deploy
-D=github-deploy@$PROJECT.iam.gserviceaccount.com
-for role in roles/firebase.admin roles/cloudbuild.builds.editor roles/artifactregistry.writer roles/run.admin \
-    roles/iam.serviceAccountUser roles/cloudscheduler.admin roles/secretmanager.viewer roles/storage.admin \
-    roles/serviceusage.serviceUsageConsumer roles/cloudfunctions.admin; do
-  gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$D --role $role
-done
-gcloud iam service-accounts keys create github-deploy.json --iam-account $D
-cat github-deploy.json   # → GitHub secret GCP_DEPLOY_KEY (step 6), then: rm github-deploy.json
-```
+1. **Account ID**: [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → right-hand side → **Account ID** (`CLOUDFLARE_ACCOUNT_ID`).
+2. **Your workers.dev subdomain**: **Workers & Pages → Overview** shows `<something>.workers.dev` (choose one if asked). Your API will live at
+   `https://storybyte-studio-api.<something>.workers.dev` — that's `API_URL`.
+3. **Deploy token**: **My Profile → API Tokens → Create Token → Edit Cloudflare Workers** template → **Continue → Create Token** (`CLOUDFLARE_DEPLOY_TOKEN`).
+4. **Pictures token** (`CLOUDFLARE_API_TOKEN`): reuse StoryByte's Workers AI token, or **Create Custom Token** with permission **Account → Workers AI → Edit**.
 
-## 3. Google sign-in for YouTube
+The free Workers AI allowance is 10,000 neurons a day, shared across
+everything on the account, which covers a handful of Shorts a day. Videos
+still get made beyond that, with simpler fallback pictures.
 
-[console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials), same project:
+## 4. Google sign-in for YouTube
 
-1. **OAuth consent screen**: External; app name, support email, logo; app domain = `PUBLIC_URL`; privacy policy `PUBLIC_URL/privacy.html`; terms `PUBLIC_URL/terms.html`. Scopes:
-   `youtube.upload`, `youtube.readonly`, `youtube.force-ssl` (first comments).
-2. **Create credentials → OAuth client ID → Web application.** Authorized redirect URI:
-   `PUBLIC_URL/api/oauth/youtube/callback`. Copy the client id (variable `GOOGLE_CLIENT_ID`) and secret (step 5).
-3. While the app is in **Testing**, only the test users you list can connect, and their connection expires every 7 days (they'll see "Reconnect"). **Publish the app** and submit it for **verification** to open it to everyone. YouTube scopes need a demo video of the connect flow and a justification for each scope.
-4. **YouTube quota.** A project gets 10,000 units a day by default. Each upload also counts against a separate limit of about 100 uploads a day for the *whole app*, across all users. Thumbnails and comments cost 50 units each. To grow past that, request more through the [YouTube API Services audit and quota extension form](https://support.google.com/youtube/contact/yt_api_form).
+[console.cloud.google.com](https://console.cloud.google.com), same project as Firebase:
 
-## 4. Facebook Login for Facebook Pages and Instagram
+1. **APIs & Services → Library → YouTube Data API v3 → Enable.**
+2. **Google Auth Platform (OAuth consent screen)** → **Get started**: app name `StoryByte Studio`, your email, audience **External**. Then:
+   - **Branding**: app home page `PUBLIC_URL`, privacy policy `PUBLIC_URL/privacy.html`, terms `PUBLIC_URL/terms.html`.
+   - **Data access → Add scopes**: `…/auth/youtube.upload`, `…/auth/youtube.readonly`, `…/auth/youtube.force-ssl`.
+   - **Audience → Test users → Add users**: your Gmail and anyone testing with you (up to 100).
+3. **Clients → Create client → Web application**. **Authorized redirect URIs**: `API_URL/oauth/youtube/callback`. Copy the **Client ID** (`GOOGLE_CLIENT_ID`) and **Client secret** (`GOOGLE_CLIENT_SECRET`).
 
-[developers.facebook.com/apps](https://developers.facebook.com/apps) → **Create app** → type **Business**:
+While the app is in **Testing**, only test users can connect, and their
+YouTube connection expires every 7 days — the dashboard shows **Reconnect**.
+Opening it to everyone needs Google's verification (later; it's easier with
+your own domain than `workers.dev`).
 
-1. Add **Facebook Login for Business**. Valid OAuth redirect URI: `PUBLIC_URL/api/oauth/meta/callback`.
-2. **App settings → Basic**: privacy policy URL, terms URL, and data deletion instructions URL (`PUBLIC_URL/privacy.html`), category, icon. Copy the **App ID** (variable `META_APP_ID`) and **App secret** (step 5).
-3. Permissions used: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_manage_engagement`, `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`, `business_management`.
-4. In **Development** mode, only people with a role on the app (admins, developers, testers) can connect. For everyone else: **Business verification**, then **App Review** for each permission above (a screencast of connecting and a post appearing), then switch the app to **Live**.
-5. Users' Instagram accounts must be **professional** (Business or Creator) accounts linked to a Facebook Page they manage.
+## 5. Facebook Login for Pages and Instagram
 
-## 5. Secrets
+[developers.facebook.com/apps](https://developers.facebook.com/apps) → **Create app** → use case **Other** → type **Business**:
 
-Generate the two app keys, keep them safe, never commit them:
+1. **Add product → Facebook Login for Business → Settings → Valid OAuth Redirect URIs**: `API_URL/oauth/meta/callback` → **Save**.
+2. **App settings → Basic**: privacy policy URL `PUBLIC_URL/privacy.html`, terms `PUBLIC_URL/terms.html`, user data deletion `PUBLIC_URL/privacy.html`, category, icon → **Save**. Copy **App ID** (`META_APP_ID`) and **App secret** (`META_APP_SECRET`).
+3. **App roles → Roles**: add anyone testing with you. In **Development** mode only they can connect; that's all you need for now.
+4. Instagram accounts must be **Professional** (Business or Creator) and linked to a Facebook Page you manage.
 
-```sh
-openssl rand -base64 32   # → TOKEN_KEY (encrypts stored tokens; changing it disconnects everyone)
-openssl rand -base64 32   # → STATE_SECRET
-```
+## 6. Keys
 
-Store them, from a machine with the Firebase CLI logged in (`npm i -g firebase-tools && firebase login`), or from Cloud Shell:
+1. `TOKEN_KEY` and `STATE_SECRET` — two random keys. Easiest: open any browser tab, press **F12 → Console**, paste this, press Enter, and copy the result; do it twice, once for each:
+   ```js
+   btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+   ```
+   Keep `TOKEN_KEY` safe: changing it later disconnects every account.
+2. `GROQ_API_KEY`: reuse StoryByte's, or create one at [console.groq.com/keys](https://console.groq.com/keys).
+3. `SARVAM_API_KEY` (optional): for the "Premium" voice.
 
-```sh
-firebase functions:secrets:set GOOGLE_CLIENT_SECRET --project $PROJECT
-firebase functions:secrets:set META_APP_SECRET --project $PROJECT
-firebase functions:secrets:set TOKEN_KEY --project $PROJECT
-firebase functions:secrets:set STATE_SECRET --project $PROJECT
-# Worker-only secrets:
-printf '%s' 'gsk_…'  | gcloud secrets create GROQ_API_KEY --data-file=-          # console.groq.com
-printf '%s' 'acct…'  | gcloud secrets create CLOUDFLARE_ACCOUNT_ID --data-file=- # Workers AI
-printf '%s' 'token…' | gcloud secrets create CLOUDFLARE_API_TOKEN --data-file=-
-printf '%s' 'sk_…'   | gcloud secrets create SARVAM_API_KEY --data-file=-        # optional: "Premium" voice
-```
+## 7. GitHub settings
 
-These all live in Secret Manager, so the worker reads `TOKEN_KEY` and
-`GOOGLE_CLIENT_SECRET` from the same place the functions do.
+In this repository: **Settings → Secrets and variables → Actions**.
 
-## 6. GitHub repository settings
+**Secrets** tab → **New repository secret** for each:
 
-**Settings → Secrets and variables → Actions**:
+| Secret | Value |
+| --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT` | the whole `.json` file from step 2 |
+| `TOKEN_KEY`, `STATE_SECRET` | step 6 |
+| `GOOGLE_CLIENT_SECRET` | step 4 |
+| `META_APP_SECRET` | step 5 |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DEPLOY_TOKEN`, `CLOUDFLARE_API_TOKEN` | step 3 |
+| `GROQ_API_KEY`, `SARVAM_API_KEY` (optional) | step 6 |
 
-| Kind | Name | Value |
-| --- | --- | --- |
-| Secret | `GCP_DEPLOY_KEY` | contents of `github-deploy.json` (step 2) |
-| Variable | `FIREBASE_PROJECT_ID` | `PROJECT` |
-| Variable | `FIREBASE_WEB_CONFIG` | the JSON from step 1.5 |
-| Variable | `FIREBASE_STORAGE_BUCKET` | the bucket from step 1.4 |
-| Variable | `GOOGLE_CLIENT_ID` | step 3 |
-| Variable | `META_APP_ID` | step 4 |
-| Variable | `PUBLIC_URL` | e.g. `https://PROJECT.web.app` |
-| Variable | `GCP_REGION` | optional, default `us-central1` |
+**Variables** tab → **New repository variable** for each:
 
-Then **Actions → Deploy Firebase → Run workflow**. Also set `.firebaserc`'s
-project id if you deploy from your own machine.
+| Variable | Value |
+| --- | --- |
+| `FIREBASE_PROJECT_ID` | step 1 |
+| `FIREBASE_WEB_CONFIG` | step 1 (one-line JSON) |
+| `PUBLIC_URL` | `https://PROJECT.web.app` |
+| `API_URL` | `https://storybyte-studio-api.<something>.workers.dev` |
+| `GOOGLE_CLIENT_ID` | step 4 |
+| `META_APP_ID` | step 5 |
 
-## 7. The worker
+## 8. Deploy
 
-**Actions → Deploy worker → Run workflow.** This builds the image, creates
-the `storybyte-worker` Cloud Run Job, and schedules it at 5 minutes past every
-hour. Each run queues whatever is due and makes up to `MAX_JOBS_PER_RUN`
-videos (default 3). Overlapping runs share the queue safely.
+**Actions** tab:
 
-To run it right now instead of waiting for the hour:
+1. **Deploy API → Run workflow.** When it's green, open `API_URL/nope` in a browser — `{"error":"not found"}` means the API is up.
+2. **Deploy Firebase → Run workflow.** Then open `PUBLIC_URL`.
+3. **Make videos** runs by itself at 5 minutes past every hour. To run it now: **Make videos → Run workflow**.
 
-```sh
-gcloud run jobs execute storybyte-worker --region $REGION
-```
+Later pushes to `main` redeploy automatically.
 
-Logs: **Cloud Run → Jobs → storybyte-worker → Logs.**
+## 9. Try it
 
-## 8. Try it
+1. Open `PUBLIC_URL` → **Sign in with Google**.
+2. **+ YouTube channel**, then **+ Facebook Page & Instagram**.
+3. **+ New profile**: topic, language, style, voice, times; under **Post to**, pick your accounts → **Save**.
+4. **Make a Short now**, then **Actions → Make videos → Run workflow** (or wait for the hour). The video appears under **Recent videos** with links, about 10–15 minutes later.
 
-1. Open `PUBLIC_URL`, sign in, **+ YouTube channel**, **+ Facebook Page & Instagram**.
-2. **+ New profile**: topic, language, schedule. Under **Post to**, pick the accounts → **Save**.
-3. **Make a Short now**, then execute the worker (step 7) or wait for the hour. The job appears under **Recent videos** with links to the posts.
+## Free-plan limits
 
-## What it costs (rough, October 2026 prices)
-
-- **Cloud Run** (4 vCPU / 8 GiB): about $0.05 per Short (around 10 minutes), $0.50–1 per long episode. The free tier covers the first ~50 vCPU-hours a month.
-- **Cloudflare Workers AI**: about 10–18 scene pictures per Short. The free 10,000 neurons a day covers a handful of Shorts; beyond that it's $0.011 per 1,000 neurons.
-- **Groq**: the free tier's per-minute token limits handle a few videos an hour. For many users, use a paid key.
-- **Firestore, Hosting, Functions, Storage**: pennies at this scale.
-
-Per-user limits live in code: 3 profiles (`MAX_PROFILES_PER_USER`), 3 Shorts
-per profile per day, 3 "Run now" per day. Raise them only once your quotas
-can carry it.
+- **GitHub Actions**: unlimited minutes if this repository is public, 2,000 a month if private (a Short takes ~10–15 minutes, an episode up to ~1.5 hours). Scheduled runs can start a few minutes late.
+- **Firestore (Spark)**: 50,000 reads and 20,000 writes a day — far more than this uses.
+- **Cloudflare Workers**: 100,000 API requests a day. **Workers AI**: see step 3.
+- **YouTube**: about 100 uploads a day for the whole app (all users together) by default.
+- **Opening to the public**: see "Before opening it to the public" in the README — the worker should move off GitHub Actions then.

@@ -1,0 +1,52 @@
+# Deploys the API (account connections, "Run now", account deletion) as a
+# Cloudflare Worker on Cloudflare's free plan. Setup: docs/SETUP.md.
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths: ['api/**', '.github/workflows/deploy-api.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy-api
+
+jobs:
+  deploy:
+    # Skipped until the project is configured.
+    if: vars.FIREBASE_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install
+        working-directory: api
+        run: npm ci
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: api
+          wranglerVersion: '4.135.0'
+          command: >-
+            deploy
+            --var GOOGLE_CLIENT_ID:${{ vars.GOOGLE_CLIENT_ID }}
+            --var META_APP_ID:${{ vars.META_APP_ID }}
+            --var PUBLIC_URL:${{ vars.PUBLIC_URL }}
+          secrets: |
+            FIREBASE_SERVICE_ACCOUNT
+            TOKEN_KEY
+            STATE_SECRET
+            GOOGLE_CLIENT_SECRET
+            META_APP_SECRET
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
+          STATE_SECRET: ${{ secrets.STATE_SECRET }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
