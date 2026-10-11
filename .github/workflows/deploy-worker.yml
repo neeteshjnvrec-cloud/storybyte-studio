@@ -17,6 +17,8 @@ concurrency: deploy-worker
 
 jobs:
   deploy:
+    # Skipped until the project is configured (docs/SETUP.md, step 6).
+    if: vars.FIREBASE_PROJECT_ID != ''
     runs-on: ubuntu-latest
     env:
       PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
