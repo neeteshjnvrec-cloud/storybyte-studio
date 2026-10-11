@@ -3,27 +3,10 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const childProcess = require('child_process');
 const { stub, fakeDb, FieldValue } = require('./helpers');
 
-// A stand-in for the episode engine: checks it was handed the bible, then
-// writes what the real engine writes.
+process.env.EPISODE_ENGINE = path.join(__dirname, 'fake-engine.js');
 const engineCalls = [];
-childProcess.execFile = (cmd, args, opts, done) => {
-  const env = opts.env;
-  engineCalls.push(env);
-  const seriesDir = path.join(env.EPISODE_WORKDIR, 'episodes', 'krishna-leela');
-  const dir = path.join(seriesDir, `season-${env.EPISODE_SEASON}`, `episode-${env.EPISODE_NUMBER}`);
-  fs.mkdirSync(dir, { recursive: true });
-  const previous = fs.existsSync(path.join(seriesDir, 'series.json')) ? JSON.parse(fs.readFileSync(path.join(seriesDir, 'series.json'))) : { episodes: [] };
-  fs.writeFileSync(path.join(seriesDir, 'series.json'), JSON.stringify({ ...previous, episodes: [...previous.episodes, env.EPISODE_NUMBER] }));
-  fs.writeFileSync(path.join(dir, 'story.json'), JSON.stringify({ metadata: { title: `Ep ${env.EPISODE_NUMBER}`, description: 'desc', tags: ['t'] } }));
-  fs.writeFileSync(path.join(dir, 'episode.mp4'), 'video');
-  fs.writeFileSync(path.join(dir, 'thumbnail.jpg'), 'jpg');
-  const child = { stdout: { on() {} } };
-  setImmediate(() => done(null, 'ok', ''));
-  return child;
-};
 
 const db = fakeDb();
 stub('firebase.js', { db, FieldValue });
@@ -43,6 +26,7 @@ test('episodes continue the series: numbering, bible round-trip, style and voice
   for (const n of [1, 2]) {
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'long-test-'));
     const result = await runLong({ uid: 'u1', profile, jobId: `j${n}`, workDir });
+    engineCalls.push(JSON.parse(fs.readFileSync(path.join(workDir, 'engine-env.json'), 'utf8')));
     fs.rmSync(workDir, { recursive: true, force: true });
     assert.strictEqual(result.episode, n);
     assert.strictEqual(result.title, `Ep ${n}`);

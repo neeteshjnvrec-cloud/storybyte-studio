@@ -20,7 +20,8 @@ const { db, FieldValue } = require('../firebase');
 const { voiceFor } = require('./media');
 const { publishAll } = require('./publish');
 
-const ENGINE = path.join(__dirname, '..', 'engine', 'build-landscape-episode.js');
+// EPISODE_ENGINE swaps in another script with the same contract (the tests use a fake one).
+const ENGINE = process.env.EPISODE_ENGINE || path.join(__dirname, '..', 'engine', 'build-landscape-episode.js');
 
 // Must match slug() in build-landscape-episode.js — it decides the folder
 // the engine reads the bible from.
